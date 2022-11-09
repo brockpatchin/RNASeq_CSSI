@@ -56,14 +56,14 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
         temp_sample_list = list(shared_dict['sample_list']) # grabs version of sample list (this is done so we can make changes to the shared dict as the shared_dict object does not support changes like pop or append, only assignment)
         temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
         temp_ccs = list(shared_dict['ccs']) # see above
-        temp_average_throughputs = list(shared_dict['average_throughputs']) # see above
-        temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
+        temp_average_throughputs = list(shared_dict['average_throughputs']) # see above # see above
         sleep(1) # used to maintain conformity, as well as to ensure that system stays synchronized
         size = finished_file_bytes # initializes size to finished_file_bytes 
         if len(temp_sample_list) == 0 and len(temp_active_transfer_list) == 0: # if we have an empty list, just break out of the download monitor
            return
         for f in temp_active_transfer_list: # iterate through the entire active transfer list
             try:
+                temp_file_object_dict = dict(shared_dict['file_object_dict'])
                 temp_file_object_dict[f].offset = pathlib.Path(f).stat().st_size # initalize the place where we are on in our download of the file and set this to the offset value
                 shared_dict['file_object_dict'] = temp_file_object_dict # anytime we change the temp versions of the shared_dict, to maintain synchronization, we reassign
                 size += pathlib.Path(f).stat().st_size # change the size to the new total
@@ -102,7 +102,6 @@ def file_downloader (shared_dict): # arguments, same as download monitor
     while True: # loop
         temp_sample_list = list(shared_dict['sample_list']) # grabs version of sample list (this is done so we can make changes to the shared dict as the shared_dict object does not support changes like pop or append, only assignment)
         temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
-        temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
         lock_sample_list.acquire() # unlock the sample list
         if len(sample_list) == 0:
             print("Exiting thread...")
@@ -111,8 +110,13 @@ def file_downloader (shared_dict): # arguments, same as download monitor
         # Synchronized operation due to using concurrency
         if len(temp_sample_list) != 0:
             filename = temp_sample_list.pop() # grabs the next filename off the top of the stack
+        temp_file_object_dict = dict(shared_dict['file_object_dict'])
         temp_file_object_dict['data'+filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
+        print(temp_file_object_dict['data'+filename].filename)
+        print(temp_file_object_dict['data'+filename].processID)
         shared_dict['file_object_dict'] = temp_file_object_dict # reassigns as the file object dict has changed
+        print(shared_dict['file_object_dict']['data'+filename].filename)
+        print(shared_dict['file_object_dict']['data'+filename].processID)
 
         shared_dict['sample_list'] = temp_sample_list # reassigns as the sample list object has changed
         lock_sample_list.release() # relocks the sample list
@@ -158,6 +162,7 @@ def file_downloader (shared_dict): # arguments, same as download monitor
                 lock_active_transfer_list.acquire() # unlock active transfer list
                 temp_active_transfer_list.remove(file_path) # remove file from said transfer list
                 shared_dict['active_transfer_list'] = temp_active_transfer_list # reassign the shared dict since we changed the temp copy
+                print(temp_active_transfer_list)
 
                 lock_active_transfer_list.release() # relock the active transfer list
                 break # hop out of while retry < 3 loop
@@ -190,17 +195,20 @@ def remove_some_processes(count, shared_dict): # arguments are the number of pro
     temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
     temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
 
+    for i in temp_file_object_dict.keys():
+        file = temp_file_object_dict[i]
+        print(file.filename, file.processID, file.offset)
+    
+    print(count)
+
     for i in range(count): # iterate count number of times
         lock_active_transfer_list.acquire() # unlock the active transfer list
         filename = temp_active_transfer_list.pop(0) # grab the file that was first added
+        print(filename)
+        temp_file_object_dict = dict(shared_dict['file_object_dict'])
         temp_file_object_dict[filename].offset = pathlib.Path(filename).stat().st_size # grab said file's most recent offset value
 
         os.kill(temp_file_object_dict[filename].processID, signal.SIGKILL) # kill the process that is downloading the file using its pid
-        
-        #  THIS IS WHAT WE USED TO DO  #
-
-        # x = thread_list.pop()
-        # x.terminate()
 
         print('Deleting thread...') # tell the user what we did
         shared_dict['active_transfer_list'] = temp_active_transfer_list # reassign the shared dict as we changed the temp copy
@@ -300,7 +308,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-i', '--input',
                   action="store", dest="sample_list",
-                  help="input file for sample list", default="samples.tsv")
+                  help="input file for sample list", default="samples_extremely_large.tsv") # samples_extremely_large.tsv
     parser.add_argument('-o', '--output',
                       action="store", dest="output_directory",
                       help="output directory to save sample files", default="data")
@@ -323,6 +331,7 @@ if __name__ == "__main__":
 
     for i in sample_list:
         file_object_dict['data'+i] = FileObject('data'+i, 0, 0)
+    
 
     average_throughputs = []
     ccs = [1]
