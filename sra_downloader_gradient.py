@@ -74,7 +74,8 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
         if throughput == 0:
             continue
         throughput_list.append(throughput) # add new throughput to throughput list so we can use our GD algo
-        print ("Throughput {} Mbps, target {} Mbps, Active files: {}, Remaining files {}".format(throughput, target_throughput, len(temp_active_transfer_list), len(temp_sample_list))) # print statement to tell the user what is happening
+        print ("Throughput {} Mbps, Active files: {}, Remaining files {}".format(throughput, len(temp_active_transfer_list), len(temp_sample_list))) # print statement to tell the user what is happening
+        print("Here is the temp_active_transfer_list: ", temp_active_transfer_list)
         last_size = size # set the last_size to the current size in preparation for the next iteration
         if len(throughput_list) > 6 and time() > last_concurrency_update_t + 7: # this is done so that we accrue enough values to have a valid mean throughput (we should not have too small of a sample size as this could easily be skewed by noise)
             if len(temp_sample_list) < 2:
@@ -114,10 +115,9 @@ def file_downloader (shared_dict): # arguments, same as download monitor
         temp_file_object_dict = dict(shared_dict['file_object_dict'])
         temp_file_object_dict[output_directory + filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
         print(temp_file_object_dict[output_directory + filename].filename)
-        print(temp_file_object_dict[output_directory + filename].processID)
         shared_dict['file_object_dict'] = temp_file_object_dict # reassigns as the file object dict has changed
-        print(shared_dict['file_object_dict'][output_directory + filename].filename)
-        print(shared_dict['file_object_dict'][output_directory + filename].processID)
+        # print(shared_dict['file_object_dict'][output_directory + filename].filename)
+        # print(shared_dict['file_object_dict'][output_directory + filename].processID)
 
         shared_dict['sample_list'] = temp_sample_list # reassigns as the sample list object has changed
         lock_sample_list.release() # relocks the sample list
@@ -187,7 +187,7 @@ def add_more_processes(count, shared_dict): # arguments are the number of proces
     for i in range(count): # iterate count number of times
         thread = multiprocessing.Process(target=file_downloader, \
                                   args=(shared_dict,), daemon=True) # for each iteration, add a new process of file downloader
-        print("Creating new thread ") # tell the user what is happening
+        print("Creating new thread") # tell the user what is happening
         thread.start() # start the thread
 
 # REMOVE SOME PROCESSES FUNCTION
@@ -196,28 +196,28 @@ def remove_some_processes(count, shared_dict): # arguments are the number of pro
     temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
     temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
 
-    for i in temp_file_object_dict.keys():
-        file = temp_file_object_dict[i]
-        print(file.filename, file.processID, file.offset)
+    # for i in temp_file_object_dict.keys():
+    #     file = temp_file_object_dict[i]
+    #     print(file.filename, file.processID, file.offset)
     
-    print(count)
+    # print(count)
 
     for i in range(count): # iterate count number of times
         lock_active_transfer_list.acquire() # unlock the active transfer list
         filename = temp_active_transfer_list.pop(0) # grab the file that was first added
-        print(filename)
         temp_file_object_dict = dict(shared_dict['file_object_dict'])
         temp_file_object_dict[filename].offset = pathlib.Path(filename).stat().st_size # grab said file's most recent offset value
 
         os.kill(temp_file_object_dict[filename].processID, signal.SIGKILL) # kill the process that is downloading the file using its pid
 
-        print('Deleting thread...') # tell the user what we did
+        print(f'Deleting thread... {filename}') # tell the user what we did
         shared_dict['active_transfer_list'] = temp_active_transfer_list # reassign the shared dict as we changed the temp copy
         shared_dict['file_object_dict'] = temp_file_object_dict # reassign the shared dict as we changed the temp copy
         lock_active_transfer_list.release() # relock the active transfer list
 
         lock_sample_list.acquire() # unlock the sample list
-        temp_sample_list.append(filename[4:len(filename)]) # add the filename that we just removed back to the sample list
+        temp_sample_list.append(filename[5:len(filename)]) # add the filename that we just removed back to the sample list
+        print("This is the last file that was just appended to the temp sample list: ", temp_sample_list[-1])
         shared_dict['sample_list'] = temp_sample_list # reassign the shared dict since we changed the temp copy
         lock_sample_list.release() # relock the sample list
 # GRADIENT DESCENT ALGO
