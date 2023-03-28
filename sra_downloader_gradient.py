@@ -51,7 +51,8 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
     last_size = 0 # used for calculating throughput deviation
     last_concurrency_update_t = 0 # similar to above
     throughput_list = [] # basic list data structure that is used to ensure that we maintain the throughput calculations done previously (this is used heavily in the GD algo)
-
+    
+    add_more_processes(concurrency, shared_dict)
     while True: # loop for monitor
         temp_sample_list = list(shared_dict['sample_list']) # grabs version of sample list (this is done so we can make changes to the shared dict as the shared_dict object does not support changes like pop or append, only assignment)
         temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
@@ -111,12 +112,12 @@ def file_downloader (shared_dict): # arguments, same as download monitor
         if len(temp_sample_list) != 0:
             filename = temp_sample_list.pop() # grabs the next filename off the top of the stack
         temp_file_object_dict = dict(shared_dict['file_object_dict'])
-        temp_file_object_dict['data'+filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
-        print(temp_file_object_dict['data'+filename].filename)
-        print(temp_file_object_dict['data'+filename].processID)
+        temp_file_object_dict[output_directory + filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
+        print(temp_file_object_dict[output_directory + filename].filename)
+        print(temp_file_object_dict[output_directory + filename].processID)
         shared_dict['file_object_dict'] = temp_file_object_dict # reassigns as the file object dict has changed
-        print(shared_dict['file_object_dict']['data'+filename].filename)
-        print(shared_dict['file_object_dict']['data'+filename].processID)
+        print(shared_dict['file_object_dict'][output_directory + filename].filename)
+        print(shared_dict['file_object_dict'][output_directory + filename].processID)
 
         shared_dict['sample_list'] = temp_sample_list # reassigns as the sample list object has changed
         lock_sample_list.release() # relocks the sample list
@@ -151,7 +152,7 @@ def file_downloader (shared_dict): # arguments, same as download monitor
                 curl.perform() # try and download the file
                 file_size = pathlib.Path(file_path).stat().st_size # change the file size accordingly
                 finished_file_bytes += file_size # add the number of bytes that we have downloaded so far to the absolute total
-                temp_file_object_dict['data'+filename].offset = finished_file_bytes # change the offset accordingly
+                temp_file_object_dict[output_directory + filename].offset = finished_file_bytes # change the offset accordingly
                 shared_dict['file_object_dict'] = temp_file_object_dict # reassign the shared dict since we changed the temp copy
                 print("Finished {} size: {} MB".format(filename, (file_size/(1024*1024)))) # print statement indicating to the user how many MB we downloaded
             except pycurl.error as exc: # clean catch of pycurl errors
@@ -311,7 +312,7 @@ if __name__ == "__main__":
                   help="input file for sample list", default="samples_extremely_large.tsv") # samples_extremely_large.tsv
     parser.add_argument('-o', '--output',
                       action="store", dest="output_directory",
-                      help="output directory to save sample files", default="data")
+                      help="output directory to save sample files", default=output_directory)
     parser.add_argument('-t', '--target',
                       action="store", dest="target_throughput", type=int,
                       help="target throughput for the transfer", default=0)
@@ -330,7 +331,7 @@ if __name__ == "__main__":
     file_object_dict = {}
 
     for i in sample_list:
-        file_object_dict['data'+i] = FileObject('data'+i, 0, 0)
+        file_object_dict[output_directory + i] = FileObject(output_directory + i, 0, 0)
     
 
     average_throughputs = []
@@ -350,10 +351,10 @@ if __name__ == "__main__":
     pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
 
     # START INITIAL THREADS
-    t = multiprocessing.Process(target=download_monitor, \
-                     args=(shared_dict, )) # TODO: POSSIBLY ADD DAEMON = TRUE BACK TO THIS PROCESS
-    gradient_thread = multiprocessing.Process(target=gradient, args=((harp_response, shared_dict)))
-    t.start()
+    #t = multiprocessing.Process(target=download_monitor, \
+    #                 args=(shared_dict, ), daemon=True) # TODO: POSSIBLY ADD DAEMON = TRUE BACK TO THIS PROCESS
+    gradient_thread = multiprocessing.Process(target=gradient, args=((harp_response, shared_dict)), daemon=True)
+    #t.start()
     gradient_thread.start()
-    add_more_processes(concurrency, shared_dict)
-    t.join()
+    #t.join()
+    download_monitor(shared_dict)
