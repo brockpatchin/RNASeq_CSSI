@@ -60,7 +60,7 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
         temp_average_throughputs = list(shared_dict['average_throughputs']) # see above # see above
         sleep(1) # used to maintain conformity, as well as to ensure that system stays synchronized
         size = finished_file_bytes # initializes size to finished_file_bytes 
-        if len(temp_sample_list) == 0 and len(temp_active_transfer_list) == 0: # if we have an empty list, just break out of the download monitor
+        if len(temp_sample_list) == 0 and len(temp_active_transfer_list) == 0: # if we have an empty list, just break out of the download monitor TODO: ASK ENGIN ABOUT THIS
            return
         for f in temp_active_transfer_list: # iterate through the entire active transfer list
             try:
@@ -86,8 +86,8 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
             if concurrency != temp_ccs[-1]: # if the GD algo returns a new concurrency for us to try, enter this if statement
                 # if temp_ccs[-1] == 3: # TODO: REMOVE THIS WHEN YOU TURN IT IN, THIS IS JUST USED TO TEST THE DROP IN CONCURRENCY
                 #     temp_ccs[-1] = 1
-                if temp_ccs[-1] - concurrency > 0: # if our new concurrency is more than our previous concurrency, we need to add that many more processes
-                    add_more_processes(temp_ccs[-1] - concurrency, shared_dict)
+                if temp_ccs[-1] - len(temp_active_transfer_list) > 0: # if our new concurrency is more than our previous concurrency, we need to add that many more processes
+                    add_more_processes(temp_ccs[-1] - len(temp_active_transfer_list), shared_dict)
                 else:
                     remove_some_processes(concurrency - temp_ccs[-1], shared_dict) # conversely, if our new concurrency (given to us by GD) is less, than we need to remove some processes
                 concurrency = temp_ccs[-1] # reassign our concurrency value in preparation for next iteration
@@ -134,7 +134,7 @@ def file_downloader (shared_dict): # arguments, same as download monitor
         # initialize and start curl file download
         sample_ftp_url = discover_ftp_paths([filename])[0] # calls the discover ftp paths function so that we know where to download from
         #print("Starting to download " + filename, sample_ftp_url)
-        fp = open(file_path, "wb") # possibly append # opens up a file that we can write to (i.e. initalizes our version of the downloaded file)
+        fp = open(file_path, "ab") # possibly append # opens up a file that we can write to (i.e. initalizes our version of the downloaded file)
         curl.setopt(pycurl.URL, sample_ftp_url) # sets the URL that we are downloading from
         curl.setopt(pycurl.WRITEDATA, fp) # sets where to write the data to
         curl.setopt(pycurl.LOW_SPEED_LIMIT, 1) # sets the lowest possible transmission rate that we are allowing curl to have before it terminates
@@ -187,6 +187,7 @@ def add_more_processes(count, shared_dict): # arguments are the number of proces
     for i in range(count): # iterate count number of times
         thread = multiprocessing.Process(target=file_downloader, \
                                   args=(shared_dict,), daemon=True) # for each iteration, add a new process of file downloader
+        sleep(0.2)
         print("Creating new thread") # tell the user what is happening
         thread.start() # start the thread
 
@@ -196,11 +197,6 @@ def remove_some_processes(count, shared_dict): # arguments are the number of pro
     temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
     temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
 
-    # for i in temp_file_object_dict.keys():
-    #     file = temp_file_object_dict[i]
-    #     print(file.filename, file.processID, file.offset)
-    
-    # print(count)
 
     for i in range(count): # iterate count number of times
         lock_active_transfer_list.acquire() # unlock the active transfer list
@@ -298,7 +294,7 @@ def gradient(black_box_function, shared_dict):
             
                 update_cc = int(theta * np.ceil(temp_ccs[-1] * gradient_change))
                 next_cc = min(max(temp_ccs[-1] + update_cc, 2), soft_limit)
-                logger.info("Gradient: {0}, Gradient Change: {1}, Theta: {2}, Previous CC: {3}, Choosen CC: {4}".format(gradient, gradient_change, theta, temp_ccs[-1], next_cc))
+                logger.info("Gradient: {0}, Gradient Change: {1}, Theta: {2}, Current CC: {3}, Next CC: {4}".format(gradient, gradient_change, theta, temp_ccs[-1], next_cc))
                 temp_ccs.append(next_cc)
                 shared_dict['ccs'] = temp_ccs
 
@@ -307,9 +303,12 @@ if __name__ == "__main__":
     # LINES BELOW ARE USED FOR COMMNAD LINE ARGUMENT PARSING
     parser = ArgumentParser()
 
+    # parser.add_argument('-i', '--input',
+    #               action="store", dest="sample_list",
+    #               help="input file for sample list", default="samples_extremely_large.tsv") # samples_extremely_large.tsv
     parser.add_argument('-i', '--input',
-                  action="store", dest="sample_list",
-                  help="input file for sample list", default="samples_extremely_large.tsv") # samples_extremely_large.tsv
+                action="store", dest="sample_list",
+                help="input file for sample list", default="samples_small.tsv") # samples_extremely_large.tsv
     parser.add_argument('-o', '--output',
                       action="store", dest="output_directory",
                       help="output directory to save sample files", default=output_directory)
