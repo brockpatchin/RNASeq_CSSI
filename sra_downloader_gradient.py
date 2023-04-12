@@ -61,7 +61,8 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
         sleep(1) # used to maintain conformity, as well as to ensure that system stays synchronized
         size = finished_file_bytes # initializes size to finished_file_bytes 
         if len(temp_sample_list) == 0 and len(temp_active_transfer_list) == 0: # if we have an empty list, just break out of the download monitor TODO: ASK ENGIN ABOUT THIS
-           return
+            print('\nAll Files have been Downloaded!\n')
+            return
         for f in temp_active_transfer_list: # iterate through the entire active transfer list
             try:
                 temp_file_object_dict = dict(shared_dict['file_object_dict'])
@@ -78,12 +79,12 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
         print("Here is the temp_active_transfer_list: ", temp_active_transfer_list)
         last_size = size # set the last_size to the current size in preparation for the next iteration
         if len(throughput_list) > 6 and time() > last_concurrency_update_t + 7: # this is done so that we accrue enough values to have a valid mean throughput (we should not have too small of a sample size as this could easily be skewed by noise)
-            if len(temp_sample_list) < 2:
-                continue
+            # if len(temp_sample_list) < 2:
+            #     continue
 
             temp_average_throughputs.append(statistics.mean(throughput_list[-5:])) # adding the new mean to the average throughput list
             shared_dict['average_throughputs'] = temp_average_throughputs # reassigning to ensure synchronization
-            if concurrency != temp_ccs[-1]: # if the GD algo returns a new concurrency for us to try, enter this if statement
+            if concurrency != temp_ccs[-1] and len(temp_sample_list) != 0: # if the GD algo returns a new concurrency for us to try, enter this if statement
                 # if temp_ccs[-1] == 3: # TODO: REMOVE THIS WHEN YOU TURN IT IN, THIS IS JUST USED TO TEST THE DROP IN CONCURRENCY
                 #     temp_ccs[-1] = 1
                 if temp_ccs[-1] - len(temp_active_transfer_list) > 0: # if our new concurrency is more than our previous concurrency, we need to add that many more processes
@@ -112,68 +113,76 @@ def file_downloader (shared_dict): # arguments, same as download monitor
         # Synchronized operation due to using concurrency
         if len(temp_sample_list) != 0:
             filename = temp_sample_list.pop() # grabs the next filename off the top of the stack
-        temp_file_object_dict = dict(shared_dict['file_object_dict'])
-        temp_file_object_dict[output_directory + filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
-        print(temp_file_object_dict[output_directory + filename].filename)
-        shared_dict['file_object_dict'] = temp_file_object_dict # reassigns as the file object dict has changed
-        # print(shared_dict['file_object_dict'][output_directory + filename].filename)
-        # print(shared_dict['file_object_dict'][output_directory + filename].processID)
+            temp_file_object_dict = dict(shared_dict['file_object_dict'])
+            temp_file_object_dict[output_directory + filename].processID = multiprocessing.current_process().pid # initalizes the file object's processID with the current process's id
+            print(temp_file_object_dict[output_directory + filename].filename)
+            shared_dict['file_object_dict'] = temp_file_object_dict # reassigns as the file object dict has changed
+            # print(shared_dict['file_object_dict'][output_directory + filename].filename)
+            # print(shared_dict['file_object_dict'][output_directory + filename].processID)
 
-        shared_dict['sample_list'] = temp_sample_list # reassigns as the sample list object has changed
-        lock_sample_list.release() # relocks the sample list
+            shared_dict['sample_list'] = temp_sample_list # reassigns as the sample list object has changed
+            lock_sample_list.release() # relocks the sample list
 
-        lock_active_transfer_list.acquire() # unlocks the active transfer list
-        file_path = output_directory + filename # gets the filepath
+            lock_active_transfer_list.acquire() # unlocks the active transfer list
+            file_path = output_directory + filename # gets the filepath
 
-        temp_active_transfer_list.append(file_path) # adds said filepath to the active transfer list
-        shared_dict['active_transfer_list'] = temp_active_transfer_list # reassigns the active transfer list
+            temp_active_transfer_list.append(file_path) # adds said filepath to the active transfer list
+            shared_dict['active_transfer_list'] = temp_active_transfer_list # reassigns the active transfer list
 
-        lock_active_transfer_list.release() # relocks the active transfer list
-
-
-        # initialize and start curl file download
-        sample_ftp_url = discover_ftp_paths([filename])[0] # calls the discover ftp paths function so that we know where to download from
-        #print("Starting to download " + filename, sample_ftp_url)
-        fp = open(file_path, "ab") # possibly append # opens up a file that we can write to (i.e. initalizes our version of the downloaded file)
-        curl.setopt(pycurl.URL, sample_ftp_url) # sets the URL that we are downloading from
-        curl.setopt(pycurl.WRITEDATA, fp) # sets where to write the data to
-        curl.setopt(pycurl.LOW_SPEED_LIMIT, 1) # sets the lowest possible transmission rate that we are allowing curl to have before it terminates
-        curl.setopt(pycurl.LOW_SPEED_TIME, 2) # sets the max amount of time that the curl object will try and download with no response before it terminates
-        
-        header = ['Range: bytes=' + str(temp_file_object_dict[file_path].offset) + '-'] # sets the offset 
-        curl.setopt(pycurl.HTTPHEADER, header) # tells curl to start from this specific point in the file
+            lock_active_transfer_list.release() # relocks the active transfer list
 
 
-        #curl.setopt(curl.NOPROGRESS, False)
-        #curl.setopt(curl.XFERINFOFUNCTION, status)
-        retry = 0 # initalizes retry value that will be used to ensure that download does not hang
-        while retry < 3: # see above
-            try: 
-                curl.perform() # try and download the file
-                file_size = pathlib.Path(file_path).stat().st_size # change the file size accordingly
-                finished_file_bytes += file_size # add the number of bytes that we have downloaded so far to the absolute total
-                temp_file_object_dict[output_directory + filename].offset = finished_file_bytes # change the offset accordingly
-                shared_dict['file_object_dict'] = temp_file_object_dict # reassign the shared dict since we changed the temp copy
-                print("Finished {} size: {} MB".format(filename, (file_size/(1024*1024)))) # print statement indicating to the user how many MB we downloaded
-            except pycurl.error as exc: # clean catch of pycurl errors
-                print("Unable to download file %s (%s)" % (filename, exc)) # tell the user that we were unable to download the requested file
-                retry +=1 # increment retry value (see above for why)
-            finally:
-                fp.close() # after done, close file pointer object
-                lock_active_transfer_list.acquire() # unlock active transfer list
-                temp_active_transfer_list.remove(file_path) # remove file from said transfer list
-                shared_dict['active_transfer_list'] = temp_active_transfer_list # reassign the shared dict since we changed the temp copy
-                print(temp_active_transfer_list)
+            # initialize and start curl file download
+            sample_ftp_url = discover_ftp_paths([filename])[0] # calls the discover ftp paths function so that we know where to download from
+            #print("Starting to download " + filename, sample_ftp_url)
+            fp = open(file_path, "ab") # possibly append # opens up a file that we can write to (i.e. initalizes our version of the downloaded file)
+            curl.setopt(pycurl.URL, sample_ftp_url) # sets the URL that we are downloading from
+            curl.setopt(pycurl.WRITEDATA, fp) # sets where to write the data to
+            curl.setopt(pycurl.LOW_SPEED_LIMIT, 1) # sets the lowest possible transmission rate that we are allowing curl to have before it terminates
+            curl.setopt(pycurl.LOW_SPEED_TIME, 2) # sets the max amount of time that the curl object will try and download with no response before it terminates
+            
+            header = ['Range: bytes=' + str(temp_file_object_dict[file_path].offset) + '-'] # sets the offset 
+            curl.setopt(pycurl.HTTPHEADER, header) # tells curl to start from this specific point in the file
 
-                lock_active_transfer_list.release() # relock the active transfer list
-                break # hop out of while retry < 3 loop
-        if retry == 3: # if the program ever hits the max amount of retries
-            print("Download attempt for file %s (%s) failed () times" % (filename, exc, retry)) # tell the user that we tried 3 times and failed
-            lock_sample_list.acquire() # unlock the sample list
-            temp_sample_list.append(filename) # add this file back to the sample list since we didn't download it
-            shared_dict['sample_list'] = temp_sample_list # reassign the shared dict since we changed the temp copy
 
-            lock_sample_list.release() # relock the sample list
+            #curl.setopt(curl.NOPROGRESS, False)
+            #curl.setopt(curl.XFERINFOFUNCTION, status)
+            retry = 0 # initalizes retry value that will be used to ensure that download does not hang
+            while retry < 3: # see above
+                try: 
+                    curl.perform() # try and download the file
+                    file_size = pathlib.Path(file_path).stat().st_size # change the file size accordingly
+                    finished_file_bytes += file_size # add the number of bytes that we have downloaded so far to the absolute total
+                    temp_file_object_dict[output_directory + filename].offset = finished_file_bytes # change the offset accordingly
+                    shared_dict['file_object_dict'] = temp_file_object_dict # reassign the shared dict since we changed the temp copy
+                    print("Finished {} size: {} MB".format(filename, (file_size/(1024*1024)))) # print statement indicating to the user how many MB we downloaded
+                except pycurl.error as exc: # clean catch of pycurl errors
+                    print("Unable to download file %s (%s)" % (filename, exc)) # tell the user that we were unable to download the requested file
+                    retry +=1 # increment retry value (see above for why)
+                finally:
+                    temp_sample_list = list(shared_dict['sample_list']) # grabs version of sample list (this is done so we can make changes to the shared dict as the shared_dict object does not support changes like pop or append, only assignment)
+                    temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
+                    fp.close() # after done, close file pointer object
+                    # lock_active_transfer_list.acquire() # unlock active transfer list
+                    print()
+                    print()
+                    print(temp_active_transfer_list)
+                    temp_active_transfer_list.remove(file_path) # remove file from said transfer list
+                    print()
+                    print(temp_active_transfer_list)
+                    shared_dict['active_transfer_list'] = temp_active_transfer_list # reassign the shared dict since we changed the temp copy
+                    print()
+                    print()
+                    # lock_active_transfer_list.release() # relock the active transfer list
+                    curl.close()
+                    break # hop out of while retry < 3 loop
+            if retry == 3: # if the program ever hits the max amount of retries
+                print("Download attempt for file %s (%s) failed () times" % (filename, exc, retry)) # tell the user that we tried 3 times and failed
+                lock_sample_list.acquire() # unlock the sample list
+                temp_sample_list.append(filename) # add this file back to the sample list since we didn't download it
+                shared_dict['sample_list'] = temp_sample_list # reassign the shared dict since we changed the temp copy
+
+                lock_sample_list.release() # relock the sample list
     curl.close()
 # FUNCTION THAT IS USED TO GRAB THE FTP PATHS FOR OUR DOWNLOAD
 def discover_ftp_paths (sample_list):
@@ -199,6 +208,11 @@ def remove_some_processes(count, shared_dict): # arguments are the number of pro
 
 
     for i in range(count): # iterate count number of times
+        temp_sample_list = list(shared_dict['sample_list']) # grabs version of sample list (this is done so we can make changes to the shared dict as the shared_dict object does not support changes like pop or append, only assignment)
+        temp_active_transfer_list = list(shared_dict['active_transfer_list']) # see above
+        temp_file_object_dict = dict(shared_dict['file_object_dict']) # see above
+
+
         lock_active_transfer_list.acquire() # unlock the active transfer list
         filename = temp_active_transfer_list.pop(0) # grab the file that was first added
         temp_file_object_dict = dict(shared_dict['file_object_dict'])
