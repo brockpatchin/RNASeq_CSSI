@@ -106,8 +106,8 @@ def download_monitor (shared_dict): # arguement is the shared_dict object (this 
             temp_average_throughputs.append(statistics.mean(throughput_list[-5:])) # adding the new mean to the average throughput list
             shared_dict['average_throughputs'] = temp_average_throughputs # reassigning to ensure synchronization
             if concurrency != temp_ccs[-1] and len(lock_sample_list) != 0: # if the GD algo returns a new concurrency for us to try, enter this if statement
-                if temp_ccs[-1] >= 3: # TODO: REMOVE THIS WHEN YOU TURN IT IN, THIS IS JUST USED TO TEST THE DROP IN CONCURRENCY
-                    temp_ccs[-1] = 1
+                # if temp_ccs[-1] >= 3: # TODO: REMOVE THIS WHEN YOU TURN IT IN, THIS IS JUST USED TO TEST THE DROP IN CONCURRENCY
+                #     temp_ccs[-1] = 1
                 if temp_ccs[-1] - len(lock_active_transfer_list) > 0: # if our new concurrency is more than our previous concurrency, we need to add that many more processes
                     add_more_processes(temp_ccs[-1] - len(lock_active_transfer_list))
                 else:
@@ -196,16 +196,12 @@ def add_more_processes(count): # arguments are the number of processes that we n
 
 # REMOVE SOME PROCESSES FUNCTION
 def remove_some_processes(count): # arguments are the number of processes that we need to remove, as well as the shared dict
-    print("HELLO I AM GOING TO KILL SOMETHING")
     for i in range(count): # iterate count number of times
 
         with active_transfer_list_lock:
             filename = lock_active_transfer_list.pop(0) # grab the file that was first added
             with file_object_lock:
                 lock_file_object_dict[filename] = FileObject(filename, lock_file_object_dict[filename].processID, pathlib.Path(filename).stat().st_size)
-        
-        for i in lock_file_object_dict:
-            print('Filename: {}, Offset: {}, processId: {}'.format(lock_file_object_dict[i].filename, lock_file_object_dict[i].offset, lock_file_object_dict[i].processID))
         
         os.kill(lock_file_object_dict[filename].processID, signal.SIGKILL) # kill the process that is downloading the file using its pid
         print(f'Deleting thread... {filename}') # tell the user what we did
