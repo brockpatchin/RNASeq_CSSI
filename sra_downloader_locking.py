@@ -354,6 +354,11 @@ if __name__ == "__main__":
     average_throughputs = []
     ccs = [1]
 
+    temp_lock_sample_list = multiprocessing.Manager().list(sample_list)
+    temp_lock_transfer_list = multiprocessing.Manager().list([])
+    print(temp_lock_sample_list)
+    print(temp_lock_transfer_list)
+
     shared_dict['active_transfer_list'] = active_transfer_list
     shared_dict['sample_list'] = sample_list
     shared_dict['file_object_dict'] = file_object_dict
